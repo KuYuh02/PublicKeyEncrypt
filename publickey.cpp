@@ -299,3 +299,11 @@ public:
 
 // Function prototype for the external guess function
 extern bool guess(const std::string& password);
+
+// The guess function will be called 1,000,000 times within a loop
+// This will be implemented by the assignment framework
+bool guess(const std::string& password) {
+    // This is just a placeholder - the actual implementation
+    // will be provided by the assignment framework
+    return false;
+}
