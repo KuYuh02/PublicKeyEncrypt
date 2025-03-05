@@ -4,9 +4,8 @@
 #include <random>
 #include <algorithm>
 #include <ctime>
-#include <openssl/rsa.h>
-#include <openssl/pem.h>
-#include <openssl/err.h>
+#include <utility>
+#include <cmath>
 
 // Part 1: Password Guessing
 class PasswordGuesser {
@@ -167,187 +166,136 @@ public:
     }
 };
 
-// Part 2: Public Key Cryptography using OpenSSL
+// Part 2: Public Key Cryptography
+// Based on publickey2.cpp format from the image
 class Cryptography {
 private:
-    RSA *myPrivateKey;
-    RSA *theirPublicKey;
+    // Based on the image, publickey2.cpp uses (n, e) format for public key
+    // and uses mpz_class d for private key
+    typedef std::pair<long long, long long> KeyPair;
+    KeyPair public_key;  // Format: (n, e) as seen in image
+    long long private_key;
     
-    // Error handling
-    void handleErrors() {
-        ERR_print_errors_fp(stderr);
-        abort();
+    // Calculate modular multiplicative inverse
+    long long modular_multiplicative_inverse(long long e, long long phi) {
+        long long d = 0;
+        long long x1 = 0;
+        long long x2 = 1;
+        long long y1 = 1;
+        long long y2 = 0;
+        long long temp_phi = phi;
+        
+        while (e > 0) {
+            long long q = temp_phi / e;
+            long long t = e;
+            e = temp_phi % e;
+            temp_phi = t;
+            
+            long long t1 = x2 - q * x1;
+            x2 = x1;
+            x1 = t1;
+            
+            long long t2 = y2 - q * y1;
+            y2 = y1;
+            y1 = t2;
+        }
+        
+        if (temp_phi == 1) {
+            d = y2;
+        }
+        
+        if (d < 0) {
+            d += phi;
+        }
+        
+        return d;
+    }
+    
+    // Modular exponentiation (power_mod from image)
+    long long power_mod(long long base, long long exponent, long long modulus) {
+        long long result = 1;
+        base = base % modulus;
+        
+        while (exponent > 0) {
+            if (exponent % 2 == 1) {
+                result = (result * base) % modulus;
+            }
+            exponent = exponent >> 1;
+            base = (base * base) % modulus;
+        }
+        
+        return result;
     }
     
 public:
-    Cryptography() : myPrivateKey(nullptr), theirPublicKey(nullptr) {
-        // Initialize OpenSSL
-        OpenSSL_add_all_algorithms();
-        ERR_load_crypto_strings();
+    Cryptography() : private_key(0) {
+        // Default constructor
     }
     
-    ~Cryptography() {
-        // Clean up
-        if (myPrivateKey) RSA_free(myPrivateKey);
-        if (theirPublicKey) RSA_free(theirPublicKey);
-        EVP_cleanup();
-        ERR_free_strings();
+    // Load or set keys
+    void setMyKeys(long long n, long long e, long long d) {
+        // Set public key in (n, e) format as shown in image
+        public_key = std::make_pair(n, e);
+        
+        // Set private key
+        private_key = d;
     }
     
-    // Load my private key from file
-    void loadMyPrivateKey(const std::string& filename) {
-        FILE* fp = fopen(filename.c_str(), "r");
-        if (!fp) {
-            std::cerr << "Failed to open private key file" << std::endl;
-            return;
-        }
+    void generateKeys(long long p, long long q) {
+        // Calculate n
+        long long n = p * q;
         
-        myPrivateKey = PEM_read_RSAPrivateKey(fp, nullptr, nullptr, nullptr);
-        fclose(fp);
+        // Calculate Euler's totient function φ(n)
+        long long phi = (p - 1) * (q - 1);
         
-        if (!myPrivateKey) {
-            handleErrors();
-        }
+        // Choose e (common value is 65537)
+        long long e = 65537;
+        
+        // Calculate d (private key) using modular_multiplicative_inverse
+        long long d = modular_multiplicative_inverse(e, phi);
+        private_key = d;
+        
+        // Set public key in (n, e) format as per image
+        public_key = std::make_pair(n, e);
     }
     
-    // Load their public key from file
-    void loadTheirPublicKey(const std::string& filename) {
-        FILE* fp = fopen(filename.c_str(), "r");
-        if (!fp) {
-            std::cerr << "Failed to open public key file" << std::endl;
-            return;
-        }
-        
-        theirPublicKey = PEM_read_RSA_PUBKEY(fp, nullptr, nullptr, nullptr);
-        fclose(fp);
-        
-        if (!theirPublicKey) {
-            handleErrors();
-        }
+    void setTheirPublicKey(long long n, long long e) {
+        // We're setting someone else's public key for encryption
+        public_key = std::make_pair(n, e);
     }
     
     // Decrypt a message using my private key
-    std::string decrypt(const std::string& ciphertext) {
-        if (!myPrivateKey) {
-            std::cerr << "Private key not loaded" << std::endl;
-            return "";
-        }
-        
-        // Convert hex string to binary
-        std::vector<unsigned char> binary;
-        for (size_t i = 0; i < ciphertext.length(); i += 2) {
-            std::string byteString = ciphertext.substr(i, 2);
-            unsigned char byte = (unsigned char) std::stoi(byteString, nullptr, 16);
-            binary.push_back(byte);
-        }
-        
-        // Prepare output buffer
-        std::vector<unsigned char> decrypted(RSA_size(myPrivateKey));
-        
-        // Decrypt
-        int result = RSA_private_decrypt(
-            binary.size(),
-            binary.data(),
-            decrypted.data(),
-            myPrivateKey,
-            RSA_PKCS1_PADDING
-        );
-        
-        if (result == -1) {
-            handleErrors();
-            return "";
-        }
-        
-        // Convert to string and return
-        return std::string(decrypted.begin(), decrypted.begin() + result);
+    // Based on image: power_mod(cypher, private_key, public_key.first)
+    long long decrypt(long long ciphertext) {
+        return power_mod(ciphertext, private_key, public_key.first);
     }
     
     // Encrypt a message using their public key
-    std::string encrypt(const std::string& plaintext) {
-        if (!theirPublicKey) {
-            std::cerr << "Public key not loaded" << std::endl;
-            return "";
-        }
-        
-        // Prepare output buffer
-        std::vector<unsigned char> encrypted(RSA_size(theirPublicKey));
-        
-        // Encrypt
-        int result = RSA_public_encrypt(
-            plaintext.length(),
-            reinterpret_cast<const unsigned char*>(plaintext.c_str()),
-            encrypted.data(),
-            theirPublicKey,
-            RSA_PKCS1_PADDING
-        );
-        
-        if (result == -1) {
-            handleErrors();
-            return "";
-        }
-        
-        // Convert to hex string
-        std::string hexOutput;
-        for (int i = 0; i < result; ++i) {
-            char hex[3];
-            sprintf(hex, "%02x", encrypted[i]);
-            hexOutput += hex;
-        }
-        
-        return hexOutput;
+    // Based on image: power_mod(message, public_key.second, public_key.first)
+    long long encrypt(long long plaintext) {
+        return power_mod(plaintext, public_key.second, public_key.first);
+    }
+    
+    // Verify a signature (based on image)
+    bool verifySignature(long long message, long long signature, KeyPair their_public_key) {
+        // In publickey2.cpp, verification uses:
+        // power_mod(signature, pats_public_key.second, pats_public_key.first)
+        long long decrypted_signature = power_mod(signature, their_public_key.second, their_public_key.first);
+        return (decrypted_signature == message);
+    }
+    
+    // Sign a message
+    long long sign(long long message) {
+        // In publickey2.cpp, signing uses private_key and n:
+        // power_mod('f', private_key, public_key.first)
+        return power_mod(message, private_key, public_key.first);
+    }
+    
+    // Get public key
+    KeyPair getPublicKey() const {
+        return public_key;
     }
 };
 
 // Function prototype for the external guess function
-// This will be provided by the assignment framework
 extern bool guess(const std::string& password);
-
-// Main function that ties everything together
-int main(int argc, char* argv[]) {
-    // Part 1: Password Guessing
-    PasswordGuesser passwordGuesser;
-    int points = 0;
-    
-    // Make 1,000,000 guesses
-    for (int i = 0; i < 1000000; ++i) {
-        std::string passwordAttempt = passwordGuesser.guessPassword(i);
-        
-        // Call the external guess function
-        if (guess(passwordAttempt)) {
-            // Password found! Increment points
-            points++;
-            std::cout << "Password found: " << passwordAttempt << std::endl;
-        }
-    }
-    
-    std::cout << "Total points: " << points << std::endl;
-    
-    // Part 2: Public Key Cryptography
-    if (argc < 4) {
-        std::cerr << "Usage: " << argv[0] << " <my_private_key.pem> <their_public_key.pem> <encrypted_message>" << std::endl;
-        return 1;
-    }
-    
-    Cryptography crypto;
-    
-    // Load keys
-    crypto.loadMyPrivateKey(argv[1]);
-    crypto.loadTheirPublicKey(argv[2]);
-    
-    // Decrypt the message from command line
-    std::string encryptedMessage = argv[3];
-    std::string decryptedMessage = crypto.decrypt(encryptedMessage);
-    
-    std::cout << "Decrypted message: " << decryptedMessage << std::endl;
-    
-    // Get message to encrypt from user
-    std::string messageToEncrypt;
-    std::cout << "Enter message to encrypt: ";
-    std::getline(std::cin, messageToEncrypt);
-    
-    // Encrypt and display
-    std::string encryptedResponse = crypto.encrypt(messageToEncrypt);
-    std::cout << "Encrypted message: " << encryptedResponse << std::endl;
-    
-    return 0;
-}
