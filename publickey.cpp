@@ -1,72 +1,51 @@
-#include <gmpxx.h>
-#include <stdexcept>
-#include <utility>
-
-// Convenient name for the key pair
-typedef std::pair<mpz_class, mpz_class> keypair;
-
-// Test harness provides the hash function
-uint16_t sha16(const mpz_class& key);
-
-// Fast modular exponentiation
-mpz_class power_mod(mpz_class base, mpz_class exponent, const mpz_class& modulus) {
-    mpz_class result(1);
-    base = base % modulus;
-    while (exponent > 0) {
-        if (mpz_odd_p(exponent.get_mpz_t())) {
-            result = result * base % modulus;
-        }
-        exponent = exponent / 2;
-        base = base * base % modulus;
-    }
-    return result;
-}
-
-// Modular multiplicative inverse
-mpz_class modular_multiplicative_inverse(const mpz_class& a, const mpz_class& b) {
-    mpz_class result;
-    if (!mpz_invert(result.get_mpz_t(), a.get_mpz_t(), b.get_mpz_t())) {
-        throw std::runtime_error("domain error");
-    }
-    return result;
-}
-
-// Private key and last public key sent
+// Save your private key and the last public key you sent me
 mpz_class private_key;
 keypair public_key;
 
-// Key creation function
+// Function to create keys
 keypair create_keys(const mpz_class& p, const mpz_class& q) {
     mpz_class n = p * q;
     mpz_class phi = (p - 1) * (q - 1);
 
-    mpz_class e(65537); // Commonly used prime for public exponent
-    if (mpz_gcd_ui(nullptr, phi.get_mpz_t(), e.get_ui()) != 1) {
-        throw std::runtime_error("Invalid e value");
-    }
+    // Choose a public key exponent e (typically 65537)
+    mpz_class e = 65537;
 
-    mpz_class d = modular_multiplicative_inverse(e, phi);
+    // Compute the private key exponent d
+    mpz_class d = modular_multplicative_inverse(e, phi);
 
-    public_key = {e, n};
+    // Save the private key
     private_key = d;
 
-    return public_key;
+    // Return the public key (e, n)
+    return std::make_pair(e, n);
 }
 
-// Message validation function
+// Function to validate a message
 mpz_class validate(const mpz_class& cypher, const mpz_class& signature, const keypair& pats_public_key) {
-    // Decrypt signature with Pat's public key to get the hash
-    mpz_class decrypted_hash = power_mod(signature, pats_public_key.first, pats_public_key.second);
+    mpz_class recovered_hash = power_mod(signature, pats_public_key.first, pats_public_key.second);
+    mpz_class computed_hash = sha16(cypher);
 
-    // Compute the hash of the cypher
-    uint16_t cypher_hash = sha16(cypher);
-
-    // If hashes don't match, it's a forgery
-    if (decrypted_hash != cypher_hash) {
-        return power_mod(mpz_class('f'), public_key.first, public_key.second);
+    if (recovered_hash != computed_hash) {
+        // Return 'f' for forgery
+        return mpz_class('f');
+    } else {
+        // Check if the message is even or odd
+        if (mpz_even_p(cypher.get_mpz_t())) {
+            return mpz_class('e');
+        } else {
+            return mpz_class('o');
+        }
     }
+}
 
-    // Determine if cypher is even or odd and respond accordingly
-    char response = (cypher % 2 == 0) ? 'e' : 'o';
-    return power_mod(mpz_class(response), public_key.first, public_key.second);
+// Function to encrypt a message using the recipient's public key
+mpz_class encrypt(const std::string& message, const keypair& public_key) {
+    mpz_class m(message);
+    return power_mod(m, public_key.first, public_key.second);
+}
+
+// Function to decrypt a message using your private key
+std::string decrypt(const mpz_class& cypher) {
+    mpz_class m = power_mod(cypher, private_key, public_key.second);
+    return m.get_str();
 }
