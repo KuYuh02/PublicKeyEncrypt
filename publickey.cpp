@@ -59,11 +59,12 @@ mpz_class validate(const mpz_class& cypher, const mpz_class& signature, const ke
     mpz_class decrypted_hash = power_mod(signature, pats_public_key.first, pats_public_key.second);
 
     // Compute the hash of the cypher
-    uint16_t cypher_hash = sha16(cypher);
+    mpz_class cypher_hash = sha16(cypher);
 
     // If hashes don't match, it's a forgery
     if (decrypted_hash != cypher_hash) {
-        return power_mod(mpz_class('f'), public_key.first, public_key.second);
+        // Encrypt 'f' using Pat's public key
+        return power_mod(mpz_class('f'), pats_public_key.first, pats_public_key.second);
     }
 
     // Determine if cypher is even or odd and respond accordingly
@@ -74,6 +75,6 @@ mpz_class validate(const mpz_class& cypher, const mpz_class& signature, const ke
         response = 'o';
     }
 
-    // Ensure proper encoding of the response character
-    return power_mod(mpz_class(static_cast<int>(response)), public_key.first, public_key.second);
+    // Encrypt the response using Pat's public key
+    return power_mod(mpz_class(response), pats_public_key.first, pats_public_key.second);
 }
