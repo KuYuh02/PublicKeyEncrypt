@@ -74,5 +74,6 @@ mpz_class validate(const mpz_class& cypher, const mpz_class& signature, const ke
         response = 'o';
     }
 
-    return power_mod(mpz_class(response), public_key.first, public_key.second);
+    // Ensure proper encoding of the response character
+    return power_mod(mpz_class(static_cast<int>(response)), public_key.first, public_key.second);
 }
