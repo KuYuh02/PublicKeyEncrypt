@@ -1,56 +1,27 @@
 #include <gmpxx.h>
-#include <unordered_set>
 #include <stdexcept>
-#include <string>
 #include <utility>
 
-// Part 1: Password Guessing
-class PasswordGuesser {
-private:
-    std::unordered_set<std::string> database; // Simulated database of passwords
-    std::unordered_set<std::string> classmates; // Simulated classmates' passwords
-    int guessCounter;
-
-public:
-    PasswordGuesser() : guessCounter(0) {
-        // Initialize with some example passwords (simulated database)
-        database.insert("pass1");
-        database.insert("123456");
-        database.insert("qwerty");
-        database.insert("letmein");
-        database.insert("admin12");
-
-        // Simulated classmates' passwords
-        classmates.insert("class1");
-        classmates.insert("mate22");
-        classmates.insert("friend");
-    }
-
-    int guess(const std::string& password) {
-        guessCounter++;
-        if (database.find(password) != database.end()) {
-            if (classmates.find(password) != classmates.end()) {
-                return 10; // Classmate's password
-            }
-            return 1; // Regular password in the database
-        }
-        return 0; // Password not found
-    }
-};
-
-// Part 2: Public Key Cryptography
+// This is just a convenient name for the key pair
 typedef std::pair<mpz_class, mpz_class> keypair;
 
-// SHA16 hash function (simplified for this lab)
-uint16_t sha16(const mpz_class& key) {
-    // Simulate a 16-bit hash by taking the lower 16 bits of the key
-    return static_cast<uint16_t>(key.get_ui() & 0xFFFF);
-}
+// Test harness provides the hash function that we will use for
+// signature verification. We are using tiny SHA values here
+// to keep our messages small so that we can use smaller primes
+// in our key generation sequence.
+uint16_t sha16(const mpz_class& key);
 
-// Modular exponentiation: base^exponent mod modulus
-mpz_class power_mod(const mpz_class& base, const mpz_class& exponent, const mpz_class& modulus) {
-    mpz_class result;
-    mpz_powm(result.get_mpz_t(), base.get_mpz_t(), exponent.get_mpz_t(), modulus.get_mpz_t());
+// Efficient modular exponentiation: base ** exponent mod modulus
+mpz_class power_mod(mpz_class base, mpz_class exponent, const mpz_class& modulus) {
+    mpz_class result(1);
+    base = base % modulus;
+    while (exponent > 0) {
+        if (mpz_odd_p(exponent.get_mpz_t())) {
+            result = (result * base) % modulus;
+        }
+        exponent /= 2;
+        base = (base * base) % modulus;
+    }
     return result;
 }
 
@@ -58,7 +29,7 @@ mpz_class power_mod(const mpz_class& base, const mpz_class& exponent, const mpz_
 mpz_class modular_multiplicative_inverse(const mpz_class& a, const mpz_class& b) {
     mpz_class result;
     if (!mpz_invert(result.get_mpz_t(), a.get_mpz_t(), b.get_mpz_t())) {
-        throw std::runtime_error("domain error");
+        throw std::runtime_error("Modular inverse does not exist");
     }
     return result;
 }
@@ -67,40 +38,32 @@ mpz_class modular_multiplicative_inverse(const mpz_class& a, const mpz_class& b)
 mpz_class private_key;
 keypair public_key;
 
-// Generate RSA key pair
+// Key generation function
 keypair create_keys(const mpz_class& p, const mpz_class& q) {
     mpz_class n = p * q;
     mpz_class phi = (p - 1) * (q - 1);
-    mpz_class e = 65537; // Common choice for public exponent
+    mpz_class e(65537); // Commonly used public exponent
     mpz_class d = modular_multiplicative_inverse(e, phi);
-
+    public_key = {e, n};
     private_key = d;
-    public_key = keypair(e, n);
-
     return public_key;
 }
 
-// Validate a message and its signature
+// Fixed message validation function
 mpz_class validate(const mpz_class& cypher, const mpz_class& signature, const keypair& pats_public_key) {
-    // Decrypt the cypher using your private key
-    mpz_class decrypted = power_mod(cypher, private_key, public_key.second);
-
-    // Decrypt the signature using Pat's public key
-    mpz_class recovered_hash = power_mod(signature, pats_public_key.first, pats_public_key.second);
-
-    // Compute the hash of the decrypted message
-    uint16_t computed_hash = sha16(decrypted);
-
-    // Check if the recovered hash matches the computed hash
-    if (recovered_hash.get_ui() != computed_hash) {
-        // Forgery detected
-        return mpz_class("102"); // Return 'f' (ASCII 102) for forgery
+    // Decrypt the message with our private key
+    mpz_class decoded_message = power_mod(cypher, private_key, public_key.second);
+    
+    // Verify the signature by decrypting it with Pat's public key
+    mpz_class decoded_hash = power_mod(signature, pats_public_key.first, pats_public_key.second);
+    
+    // Check if the hash of our decoded message matches the decoded signature
+    if (sha16(decoded_message) != decoded_hash.get_ui()) {
+        // If signature doesn't match, return encoded 'f' (for forgery)
+        return power_mod(mpz_class('f'), pats_public_key.first, pats_public_key.second);
     }
-
-    // Check if the decrypted message is even or odd
-    if (mpz_even_p(decrypted.get_mpz_t())) {
-        return mpz_class("101"); // Return 'e' (ASCII 101) for even
-    } else {
-        return mpz_class("111"); // Return 'o' (ASCII 111) for odd
-    }
+    
+    // If signature is valid, check if message is even or odd and return encoded 'e' or 'o'
+    char result = mpz_even_p(decoded_message.get_mpz_t()) ? 'e' : 'o';
+    return power_mod(mpz_class(result), pats_public_key.first, pats_public_key.second);
 }
