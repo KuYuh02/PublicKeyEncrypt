@@ -1,3 +1,48 @@
+#include <gmpxx.h>
+#include <string>
+#include <random>
+#include <unordered_set>
+
+// Simulated database of passwords
+std::unordered_set<std::string> password_database = {
+    "abc123", "password", "123456", "qwerty", "letmein", "admin123"
+};
+
+// Simulated database of classmates' passwords
+std::unordered_set<std::string> classmates_passwords = {
+    "classmate1", "classmate2", "classmate3"
+};
+
+// Function to generate a random password
+std::string generate_random_password() {
+    static const char charset[] = "abcdefghijklmnopqrstuvwxyz0123456789-=.,/";
+    static std::mt19937 rng(std::random_device{}());
+    static std::uniform_int_distribution<size_t> dist(0, sizeof(charset) - 2);
+
+    std::string password;
+    for (int i = 0; i < 6; ++i) {
+        password += charset[dist(rng)];
+    }
+    return password;
+}
+
+// Function to guess passwords
+int guess() {
+    static int counter = 0;
+    int points = 0;
+
+    for (int i = 0; i < 1000000; ++i) {
+        std::string password = generate_random_password();
+        if (password_database.find(password) != password_database.end()) {
+            points += 1;
+            if (classmates_passwords.find(password) != classmates_passwords.end()) {
+                points += 9; // Additional 9 points for classmates' passwords
+            }
+        }
+    }
+
+    return points;
+}
 // Save your private key and the last public key you sent me
 mpz_class private_key;
 keypair public_key;
