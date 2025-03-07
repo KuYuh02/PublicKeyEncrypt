@@ -46,7 +46,7 @@ mpz_class modular_multplicative_inverse(const mpz_class& a, const mpz_class& b) 
 mpz_class private_key;
 keypair public_key;
 
-keypair generate_keys(const mpz_class& p, const mpz_class& q) {
+keypair create_keys(const mpz_class& p, const mpz_class& q) {
     mpz_class n = p * q;
     mpz_class phi = (p - 1) * (q - 1);
     mpz_class e = 65537; // A standard choice for e (2^16 + 1)
@@ -66,7 +66,7 @@ keypair generate_keys(const mpz_class& p, const mpz_class& q) {
 // if I did sign this message, send back 'e' to let me know that it was an even
 // number or 'o' to let me know it was an odd. Encode it using my public key
 // so I can decode it securely.
-mpz_class verify_message(const mpz_class& cypher, const mpz_class& signature, const keypair& sender_public_key) {
+mpz_class validate(const mpz_class& cypher, const mpz_class& signature, const keypair& sender_public_key) {
     mpz_class decrypted_message = power_mod(cypher, private_key, public_key.first);
     mpz_class signature_verified = power_mod(signature, sender_public_key.second, sender_public_key.first);
     uint16_t expected_hash = sha16(decrypted_message);
