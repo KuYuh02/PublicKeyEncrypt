@@ -72,8 +72,16 @@ mpz_class validate(const mpz_class& cypher, const mpz_class& signature, const ke
     uint16_t expected_hash = sha16(decrypted_message);
 
     if (signature_verified == expected_hash) {
-    // Use ternary operator to set 'parity'
-    char parity = (decrypted_message % 2) ? 'o' : 'e'; // 'o' for odd, 'e' for even
+    // Calculate the parity of the message
+    mpz_class mod_result = decrypted_message % 2;
+    char parity;
+    
+    if (mod_result == 0) {
+        parity = 'e'; // Even
+    } else {
+        parity = 'o'; // Odd
+    }
+    
     return power_mod(mpz_class(parity), sender_public_key.second, sender_public_key.first);
 }
 
